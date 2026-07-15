@@ -28,19 +28,21 @@ An OrcaSlicer Python plugin integrating with [Spoolman](https://github.com/Donki
 
 ## Installation
 
+To install the plugin, download the built `.whl` (wheel) package file and place it in a subdirectory inside OrcaSlicer's plugins folder.
+
 ### macOS
 1. Open terminal and navigate to your OrcaSlicer plugins directory:
    `cd ~/Library/Application\ Support/OrcaSlicer/orca_plugins`
-2. Create a folder named `orcaslicer_plugin_spoolman.py` (representing the plugin package name):
-   `mkdir orcaslicer_plugin_spoolman.py`
-3. Copy `orcaslicer_plugin_spoolman.py` into that directory.
+2. Create a folder for the plugin:
+   `mkdir -p orcaslicer_plugin_spoolman`
+3. Copy the built `orcaslicer_plugin_spoolman-1.0.0-py3-none-any.whl` file into that folder.
 4. Restart OrcaSlicer.
 
 ### Windows
 1. Open File Explorer and navigate to:
    `%APPDATA%\OrcaSlicer\orca_plugins`
-2. Create a folder named `orcaslicer_plugin_spoolman.py`.
-3. Copy `orcaslicer_plugin_spoolman.py` into that directory.
+2. Create a folder named `orcaslicer_plugin_spoolman`.
+3. Copy the built `orcaslicer_plugin_spoolman-1.0.0-py3-none-any.whl` file into that folder.
 4. Restart OrcaSlicer.
 
 ## Configuration & Usage
