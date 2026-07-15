@@ -1,0 +1,10 @@
+# Compiled python files
+__pycache__/
+*.pyc
+
+# Local plugin settings and logs
+spoolman_settings.json
+spoolman_gcode.log
+
+# System files
+.DS_Store
