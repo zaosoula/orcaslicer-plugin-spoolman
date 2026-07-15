@@ -1,5 +1,9 @@
 # OrcaSlicer Spoolman Bridge
 
+<p align="center">
+  <img src="logo.png" width="200" alt="Spoolman Bridge Logo">
+</p>
+
 An OrcaSlicer Python plugin integrating with [Spoolman](https://github.com/Donkie/Spoolman/), a universal self-hosted filament inventory manager.
 
 ## Table of Contents
@@ -23,8 +27,14 @@ An OrcaSlicer Python plugin integrating with [Spoolman](https://github.com/Donki
 ## How It Works
 
 1. **Spool Filament Presets**: For every active spool in Spoolman, the bridge creates a custom user filament preset formatted as `Vendor FilamentName (#ID) - Spoolman` (e.g. `eSun PLA-Basic White (#2) - Spoolman`).
+   ![Filament Preset](docs/filament_preset.png)
+   
 2. **Duplicated Slicing Profiles**: The bridge copies all your active process presets (slicing profiles) and appends `- SpoolMan` to their names.
+   ![Process Preset](docs/process_preset.png)
+   
 3. **Activation**: Slicing requires selecting **both** a synced Spoolman filament preset **AND** a synced `- SpoolMan` process preset. Slicing with both active registers the capability and triggers the automatic weight deduction wizard upon G-code export/print.
+   ![Print Settings with Plugin](docs/print_settings_with_plugin.png)
+   ![Plugin Capabilities](docs/plugin_capabilities.png)
 
 ## Installation
 
@@ -48,9 +58,13 @@ To install the plugin, download the built `.whl` (wheel) package file and place 
 ## Configuration & Usage
 
 1. **Guide & URL Setup**: Upon first launch (or by selecting **Plugins > Spoolman Settings & Guide**), a dialog window will guide you through setup and prompt you to input your self-hosted Spoolman server URL (e.g., `http://localhost:7912`).
+   ![Settings Modal](docs/settings_modal.png)
+   
 2. **Synchronization**: Run **Plugins > Sync Spoolman Profiles** to query Spoolman and populate OrcaSlicer's user directory.
-3. **Weight Deduction**: Assign the synced filament profile and process profile, slice, and export your G-code. A prompt will ask:
-   `Do you want to remove X.XXg from spool #Y (Vendor FilamentName)?`
+   ![Prompt Sync New Profiles](docs/prompt_sync_new_profiles.png)
+   
+3. **Weight Deduction**: Assign the synced filament profile and process profile, slice, and export your G-code. A prompt will ask you to confirm the filament consumption weight to deduct it from the active Spoolman spool.
+   ![Update Usage](docs/update_usage.png)
 
 ## License
 
