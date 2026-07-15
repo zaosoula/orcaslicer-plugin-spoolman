@@ -8,3 +8,9 @@ spoolman_gcode.log
 
 # System files
 .DS_Store
+
+# Build and packaging files
+build/
+dist/
+*.egg-info/
+
