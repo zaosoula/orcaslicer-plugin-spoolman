@@ -4,7 +4,7 @@
 # name = "Spoolman Bridge"
 # description = "Integrates OrcaSlicer with self-hosted Spoolman."
 # author = "Zao Soula"
-# version = "1.0.0"
+# version = "1.0.1"
 # ///
 import orca
 import orca.slicing
@@ -19,6 +19,98 @@ import time
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(PLUGIN_DIR, "spoolman_settings.json")
 LOG_FILE = os.path.join(PLUGIN_DIR, "spoolman_gcode.log")
+OPEN_WINDOWS = []
+
+TRANSLATIONS = {
+    "en": {
+        "plugin_title": "Spoolman Bridge",
+        "settings_title": "Spoolman Settings & Guide",
+        "settings_header": "Spoolman Bridge Settings & Guide",
+        "step_filament_title": "1. Spool Filament Presets",
+        "step_filament_body": "The plugin automatically creates a unique custom filament preset for each active spool in Spoolman (named <code>Vendor Filament (#ID) - Spoolman</code>).",
+        "step_process_title": "2. Duplicate Slicing Profiles",
+        "step_process_body": "It copies all your active process presets (slicing profiles) and appends <code>- SpoolMan</code> to them.",
+        "step_activate_title": "3. Selection Required to Activate",
+        "step_activate_body": "You <strong>must</strong> select both a synced Spoolman filament <strong>AND</strong> a synced <code>- SpoolMan</code> process preset when slicing. This activates the Filament Usage Updater to deduct printed weight automatically!",
+        "configure_url": "Configure Spoolman URL",
+        "enter_url": "Enter the URL of your self-hosted Spoolman instance:",
+        "cancel": "Cancel",
+        "save_close": "Save & Close",
+        "connection_error_title": "Spoolman Bridge Connection Error",
+        "connection_failed_configure": "Could not connect to Spoolman at:\n{url}\n\nDo you want to configure the Spoolman URL?",
+        "connection_failed_configure_with_error": "Could not connect to Spoolman at:\n{url}\n\nError: {error}\n\nDo you want to configure the Spoolman URL?",
+        "startup_sync_prompt": "New Spoolman profiles or settings changes detected.\n\nDo you want to sync them now?",
+        "sync_restart": "Spoolman spools & processes synced. Please restart OrcaSlicer to load them.",
+        "sync_restart_success": "Spoolman spools & processes synced successfully. Please restart OrcaSlicer to load them.",
+        "cleanup_restart": "Spoolman Bridge: Cleanup completed! Please restart OrcaSlicer.",
+        "deduct_prompt": "Do you want to remove {used_g}g from spool #{spool_id} ({spool_desc})?",
+        "cleanup_name": "Cleanup Spoolman Files",
+        "cleanup_success": "Cleanup completed",
+        "cleanup_failed": "Cleanup failed: {error}",
+        "sync_name": "Sync Spoolman Profiles",
+        "connection_failed_result": "Connection failed",
+        "sync_completed": "Sync completed",
+        "sync_failed": "Sync failed: {error}",
+        "already_up_to_date": "Spoolman is already up-to-date! No changes needed.",
+        "settings_opened": "Settings opened",
+        "url_saved_connection_failed": "URL saved, but connection failed to:\n{url}\n\nError: {error}\n\nPlease check Spoolman status.",
+        "connection_warning_title": "Spoolman Connection Warning",
+        "connection_sync_prompt": "Connection successful!\n\nNew Spoolman profiles or settings changes detected. Do you want to sync them now?",
+        "connection_up_to_date": "Connection successful! Spoolman profiles are already up-to-date.",
+        "save_settings_failed": "Failed to save settings: {error}",
+    },
+    "zh_CN": {
+        "plugin_title": "Spoolman 桥接",
+        "settings_title": "Spoolman 设置与指南",
+        "settings_header": "Spoolman 桥接设置与指南",
+        "step_filament_title": "1. 料盘耗材预设",
+        "step_filament_body": "插件会为 Spoolman 中每个启用的料盘自动创建一个独立的用户耗材预设，命名格式为 <code>\"厂商 耗材名 (#ID) - Spoolman\"</code>。",
+        "step_process_title": "2. 复制切片配置",
+        "step_process_body": "插件会复制当前可用的工艺/切片预设，并在名称后追加 <code>\"- SpoolMan\"</code>。",
+        "step_activate_title": "3. 需要同时选择才能启用",
+        "step_activate_body": "切片时必须同时选择已同步的 Spoolman 耗材预设和已同步的 <code>\"- SpoolMan\"</code> 工艺预设，才能启用耗材用量更新器，并在导出/打印后自动扣减重量。",
+        "configure_url": "配置 Spoolman 地址",
+        "enter_url": "请输入自托管 Spoolman 实例的 URL：",
+        "cancel": "取消",
+        "save_close": "保存并关闭",
+        "connection_error_title": "Spoolman 桥接连接错误",
+        "connection_failed_configure": "无法连接到 Spoolman：\n{url}\n\n是否要配置 Spoolman URL？",
+        "connection_failed_configure_with_error": "无法连接到 Spoolman：\n{url}\n\n错误：{error}\n\n是否要配置 Spoolman URL？",
+        "startup_sync_prompt": "检测到新的 Spoolman 配置文件或设置变化。\n\n是否现在同步？",
+        "sync_restart": "Spoolman 料盘和工艺预设已同步。请重启 OrcaSlicer 以加载它们。",
+        "sync_restart_success": "Spoolman 料盘和工艺预设同步成功。请重启 OrcaSlicer 以加载它们。",
+        "cleanup_restart": "Spoolman 桥接：清理完成！请重启 OrcaSlicer。",
+        "deduct_prompt": "是否要从料盘 #{spool_id}（{spool_desc}）扣除 {used_g}g？",
+        "cleanup_name": "清理 Spoolman 文件",
+        "cleanup_success": "清理完成",
+        "cleanup_failed": "清理失败：{error}",
+        "sync_name": "同步 Spoolman 预设",
+        "connection_failed_result": "连接失败",
+        "sync_completed": "同步完成",
+        "sync_failed": "同步失败：{error}",
+        "already_up_to_date": "Spoolman 已是最新，无需更改。",
+        "settings_opened": "设置已打开",
+        "url_saved_connection_failed": "URL 已保存，但无法连接到：\n{url}\n\n错误：{error}\n\n请检查 Spoolman 状态。",
+        "connection_warning_title": "Spoolman 连接警告",
+        "connection_sync_prompt": "连接成功！\n\n检测到新的 Spoolman 配置文件或设置变化。是否现在同步？",
+        "connection_up_to_date": "连接成功！Spoolman 配置文件已是最新。",
+        "save_settings_failed": "保存设置失败：{error}",
+    },
+}
+
+def get_locale():
+    try:
+        lang = orca.host.app_language().lower()
+    except Exception:
+        lang = "en"
+    if lang.startswith("zh"):
+        return "zh_CN"
+    return "en"
+
+def tr(key, **kwargs):
+    locale = get_locale()
+    text = TRANSLATIONS.get(locale, TRANSLATIONS["en"]).get(key, TRANSLATIONS["en"].get(key, key))
+    return text.format(**kwargs)
 
 # Resolved app support directories
 SUPPORT_DIR = os.path.dirname(os.path.dirname(PLUGIN_DIR)) # App Support/OrcaSlicer
@@ -41,6 +133,10 @@ def write_log(line):
             f.write(line + "\n")
     except Exception:
         pass
+
+def save_settings(spoolman_url, first_run=False):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump({"spoolman_url": spoolman_url, "first_run": first_run}, f, indent=4)
 
 def get_user_subdirs():
     if not os.path.exists(USER_DIR):
@@ -542,9 +638,10 @@ def run_cleanup_logic():
     except Exception:
         pass
 
-def show_tutorial_dialog():
+def show_tutorial_dialog(on_submit=None):
     settings = get_settings()
     current_url = settings.get("spoolman_url", "http://localhost:7912")
+    settings_title = tr("settings_title")
     
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -668,7 +765,7 @@ button.secondary {{
 <body>
     <div class="header">
         <span class="logo">🔌</span>
-        <h2>Spoolman Bridge Settings & Guide</h2>
+        <h2>{tr("settings_header")}</h2>
     </div>
     
     <div class="content">
@@ -676,22 +773,22 @@ button.secondary {{
             <div class="step">
                 <div class="step-num">1</div>
                 <div class="step-text">
-                    <h4>1. Spool Filament Presets</h4>
-                    <p>The plugin automatically creates a unique custom filament preset for each active spool in Spoolman (named <code>Vendor Filament (#ID) - Spoolman</code>).</p>
+                    <h4>{tr("step_filament_title")}</h4>
+                    <p>{tr("step_filament_body")}</p>
                 </div>
             </div>
             <div class="step">
                 <div class="step-num">2</div>
                 <div class="step-text">
-                    <h4>2. Duplicate Slicing Profiles</h4>
-                    <p>It copies all your active process presets (slicing profiles) and appends <code>- SpoolMan</code> to them.</p>
+                    <h4>{tr("step_process_title")}</h4>
+                    <p>{tr("step_process_body")}</p>
                 </div>
             </div>
             <div class="step">
                 <div class="step-num">3</div>
                 <div class="step-text">
-                    <h4>3. Selection Required to Activate</h4>
-                    <p>You <strong>must</strong> select both a synced Spoolman filament <strong>AND</strong> a synced <code>- SpoolMan</code> process preset when slicing. This activates the Filament Usage Updater to deduct printed weight automatically!</p>
+                    <h4>{tr("step_activate_title")}</h4>
+                    <p>{tr("step_activate_body")}</p>
                 </div>
             </div>
         </div>
@@ -699,15 +796,15 @@ button.secondary {{
         <div class="divider"></div>
         
         <div class="settings-section">
-            <h4>Configure Spoolman URL</h4>
-            <p style="margin: 0; font-size: 12px; color: var(--orca-muted, #ccc);">Enter the URL of your self-hosted Spoolman instance:</p>
+            <h4>{tr("configure_url")}</h4>
+            <p style="margin: 0; font-size: 12px; color: var(--orca-muted, #ccc);">{tr("enter_url")}</p>
             <input type="text" id="spoolman_url" value="{current_url}" placeholder="http://localhost:7912">
         </div>
     </div>
     
     <div class="buttons">
-        <button class="secondary" onclick="window.orca.submit({{}})">Cancel</button>
-        <button onclick="submitForm()">Save & Close</button>
+        <button class="secondary" onclick="window.orca.submit({{}})">{tr("cancel")}</button>
+        <button onclick="submitForm()">{tr("save_close")}</button>
     </div>
     
     <script>
@@ -718,25 +815,38 @@ button.secondary {{
     </script>
 </body>
 </html>"""
-    return orca.host.ui.show_dialog(html=html_content, title="Spoolman Settings & Guide", width=560, height=500)
+    if hasattr(orca.host.ui, "show_dialog"):
+        result = orca.host.ui.show_dialog(html=html_content, title=settings_title, width=560, height=500)
+        if on_submit:
+            on_submit(result)
+        return result
 
-def delayed_startup_check():
-    # Wait for OrcaSlicer to finish loading and dismiss the splash screen
-    time.sleep(6.0)
+    def handle_submit(result):
+        if win in OPEN_WINDOWS:
+            OPEN_WINDOWS.remove(win)
+        if on_submit:
+            on_submit(result)
+
+    def handle_close():
+        if win in OPEN_WINDOWS:
+            OPEN_WINDOWS.remove(win)
+        if on_submit:
+            on_submit(None)
+
+    win = orca.host.ui.create_window(
+        html=html_content,
+        title=settings_title,
+        width=560,
+        height=500,
+        style=orca.host.ui.WINDOW_MODAL,
+        on_submit=handle_submit,
+        on_close=handle_close
+    )
+    OPEN_WINDOWS.append(win)
+    return win
+
+def continue_startup_check(settings):
     try:
-        settings = get_settings()
-        
-        # Check first run
-        if settings.get("first_run", True):
-            result = show_tutorial_dialog()
-            if result and result.get("url"):
-                settings["spoolman_url"] = result["url"]
-            try:
-                with open(SETTINGS_FILE, "w") as f:
-                    json.dump({"spoolman_url": settings.get("spoolman_url", "http://localhost:7912"), "first_run": False}, f, indent=4)
-            except Exception:
-                pass
-                
         url = settings["spoolman_url"].rstrip('/')
         
         # Test connection first!
@@ -750,8 +860,8 @@ def delayed_startup_check():
             
         if connection_failed:
             choice = orca.host.ui.message(
-                f"Could not connect to Spoolman at:\n{url}\n\nDo you want to configure the Spoolman URL?",
-                title="Spoolman Bridge Connection Error",
+                tr("connection_failed_configure", url=url),
+                title=tr("connection_error_title"),
                 buttons="yes_no",
                 icon="warning"
             )
@@ -770,8 +880,8 @@ def delayed_startup_check():
         
         if modified:
             choice = orca.host.ui.message(
-                "New Spoolman profiles or settings changes detected.\n\nDo you want to sync them now?",
-                title="Spoolman Bridge",
+                tr("startup_sync_prompt"),
+                title=tr("plugin_title"),
                 buttons="yes_no",
                 icon="question"
             )
@@ -781,13 +891,37 @@ def delayed_startup_check():
                 real_sync_count, _ = sync_spoolman_filaments(dry_run=False)
                 real_created_procs, _ = sync_spoolman_processes(dry_run=False)
                 
-                orca.host.ui.message("Spoolman spools & processes synced. Please restart OrcaSlicer to load them.", title="Spoolman Bridge", icon="info")
+                orca.host.ui.message(tr("sync_restart"), title=tr("plugin_title"), icon="info")
                 
                 write_log(f"[SYNCED] Spoolman spools & processes synced successfully. Auto-injected to {count} presets. Created {real_created_fields} fields. Synced {real_sync_count} filaments, {real_created_procs} process presets.")
             else:
                 write_log("[INFO] User skipped startup sync.")
         else:
             write_log("[INFO] Startup sync check: already up-to-date.")
+    except Exception as e:
+        write_log(f"[EXCEPTION] continue_startup_check failed: {e}")
+
+def delayed_startup_check():
+    # Wait for OrcaSlicer to finish loading and dismiss the splash screen
+    time.sleep(6.0)
+    try:
+        settings = get_settings()
+
+        # Check first run
+        if settings.get("first_run", True):
+            def on_first_run_submit(result):
+                if result and result.get("url"):
+                    settings["spoolman_url"] = result["url"]
+                try:
+                    save_settings(settings.get("spoolman_url", "http://localhost:7912"), first_run=False)
+                except Exception:
+                    pass
+                threading.Thread(target=continue_startup_check, args=(settings,), daemon=True).start()
+
+            show_tutorial_dialog(on_submit=on_first_run_submit)
+            return
+
+        continue_startup_check(settings)
     except Exception as e:
         write_log(f"[EXCEPTION] delayed_startup_check failed: {e}")
 
@@ -808,7 +942,7 @@ class SpoolmanGCode(orca.slicing.SlicingPipelineCapabilityBase):
                 except Exception:
                     pass
                     
-                orca.host.ui.message("Spoolman Bridge: Cleanup completed! Please restart OrcaSlicer.", title="Spoolman Bridge", icon="info")
+                orca.host.ui.message(tr("cleanup_restart"), title=tr("plugin_title"), icon="info")
                 return
 
             # Start startup check in a background thread to prevent blocking the splash screen / main thread!
@@ -921,8 +1055,8 @@ class SpoolmanGCode(orca.slicing.SlicingPipelineCapabilityBase):
         write_log(f"[MATCHED] Best matching spool: #{spool_id} ({spool_desc}) with score {score}")
 
         # Ask user for confirmation
-        question = f"Do you want to remove {used_g}g from spool #{spool_id} ({spool_desc})?"
-        choice = orca.host.ui.message(question, title="Spoolman Bridge", buttons="yes_no", icon="question")
+        question = tr("deduct_prompt", used_g=used_g, spool_id=spool_id, spool_desc=spool_desc)
+        choice = orca.host.ui.message(question, title=tr("plugin_title"), buttons="yes_no", icon="question")
         
         if choice != "yes":
             msg = "User skipped filament deduction."
@@ -954,10 +1088,10 @@ class SpoolmanCleanupScript(orca.script.ScriptPluginCapabilityBase):
     def execute(self):
         try:
             run_cleanup_logic()
-            orca.host.ui.message("Spoolman Bridge: Cleanup completed! Please restart OrcaSlicer.", title="Spoolman Bridge", icon="info")
-            return orca.ExecutionResult.success("Cleanup completed")
+            orca.host.ui.message(tr("cleanup_restart"), title=tr("plugin_title"), icon="info")
+            return orca.ExecutionResult.success(tr("cleanup_success"))
         except Exception as e:
-            return orca.ExecutionResult.failure(orca.PluginResult.FatalError, f"Cleanup failed: {e}")
+            return orca.ExecutionResult.failure(orca.PluginResult.FatalError, tr("cleanup_failed", error=e))
 
 class SpoolmanSyncScript(orca.script.ScriptPluginCapabilityBase):
     def get_name(self):
@@ -982,15 +1116,15 @@ class SpoolmanSyncScript(orca.script.ScriptPluginCapabilityBase):
                 
             if connection_failed:
                 choice = orca.host.ui.message(
-                    f"Could not connect to Spoolman at:\n{url}\n\nError: {error_msg}\n\nDo you want to configure the Spoolman URL?",
-                    title="Spoolman Bridge Connection Error",
+                    tr("connection_failed_configure_with_error", url=url, error=error_msg),
+                    title=tr("connection_error_title"),
                     buttons="yes_no",
                     icon="warning"
                 )
                 if choice == "yes":
                     config_script = SpoolmanConfigScript()
                     config_script.execute()
-                return orca.ExecutionResult.skipped("Connection failed")
+                return orca.ExecutionResult.skipped(tr("connection_failed_result"))
 
             # Check if fields require updating in Spoolman (dry-run check)
             created_fields = ensure_spoolman_fields(dry_run=True)
@@ -1006,72 +1140,75 @@ class SpoolmanSyncScript(orca.script.ScriptPluginCapabilityBase):
                 real_sync_count, _ = sync_spoolman_filaments(dry_run=False)
                 real_created_procs, _ = sync_spoolman_processes(dry_run=False)
                 
-                orca.host.ui.message("Spoolman spools & processes synced successfully. Please restart OrcaSlicer to load them.", title="Spoolman Bridge", icon="info")
+                orca.host.ui.message(tr("sync_restart_success"), title=tr("plugin_title"), icon="info")
             else:
-                orca.host.ui.message("Spoolman is already up-to-date! No changes needed.", title="Spoolman Bridge", icon="info")
+                orca.host.ui.message(tr("already_up_to_date"), title=tr("plugin_title"), icon="info")
                 
-            return orca.ExecutionResult.success("Sync completed")
+            return orca.ExecutionResult.success(tr("sync_completed"))
         except Exception as e:
-            return orca.ExecutionResult.failure(orca.PluginResult.FatalError, f"Sync failed: {e}")
+            return orca.ExecutionResult.failure(orca.PluginResult.FatalError, tr("sync_failed", error=e))
 
 class SpoolmanConfigScript(orca.script.ScriptPluginCapabilityBase):
     def get_name(self):
         return "Spoolman Settings & Guide"
 
     def execute(self):
-        result = show_tutorial_dialog()
-        if result and result.get("url"):
-            new_url = result["url"]
-            try:
-                with open(SETTINGS_FILE, "w") as f:
-                    json.dump({"spoolman_url": new_url, "first_run": False}, f, indent=4)
-                
-                # Test connection of the new URL
-                url_test = new_url.rstrip('/')
-                connection_failed = False
-                error_msg = ""
-                try:
-                    r = requests.get(f"{url_test}/api/v1/spool?allow_archived=false", timeout=5)
-                    if r.status_code != 200:
-                        connection_failed = True
-                        error_msg = f"status code {r.status_code}"
-                except Exception as e:
-                    connection_failed = True
-                    error_msg = str(e)
+        def handle_settings_submit(result):
+            if result and result.get("url"):
+                threading.Thread(target=self.apply_settings, args=(result["url"],), daemon=True).start()
 
-                if connection_failed:
-                    orca.host.ui.message(
-                        f"URL saved, but connection failed to:\n{new_url}\n\nError: {error_msg}\n\nPlease check Spoolman status.",
-                        title="Spoolman Connection Warning",
-                        icon="warning"
-                    )
-                else:
-                    # Connection succeeded! Check if anything needs syncing
-                    created_fields = ensure_spoolman_fields(dry_run=True)
-                    sync_count, modified_fils = sync_spoolman_filaments(dry_run=True)
-                    created_procs, modified_procs = sync_spoolman_processes(dry_run=True)
-                    
-                    modified = modified_fils or modified_procs or (created_fields > 0)
-                    
-                    if modified:
-                        choice = orca.host.ui.message(
-                            "Connection successful!\n\nNew Spoolman profiles or settings changes detected. Do you want to sync them now?",
-                            title="Spoolman Bridge",
-                            buttons="yes_no",
-                            icon="question"
-                        )
-                        if choice == "yes":
-                            count = auto_inject_presets()
-                            real_created_fields = ensure_spoolman_fields(dry_run=False)
-                            real_sync_count, _ = sync_spoolman_filaments(dry_run=False)
-                            real_created_procs, _ = sync_spoolman_processes(dry_run=False)
-                            
-                            orca.host.ui.message("Spoolman spools & processes synced successfully. Please restart OrcaSlicer to load them.", title="Spoolman Bridge", icon="info")
-                    else:
-                        orca.host.ui.message("Connection successful! Spoolman profiles are already up-to-date.", title="Spoolman Bridge", icon="info")
+        show_tutorial_dialog(on_submit=handle_settings_submit)
+        return orca.ExecutionResult.success(tr("settings_opened"))
+
+    def apply_settings(self, new_url):
+        try:
+            save_settings(new_url, first_run=False)
+            
+            # Test connection of the new URL
+            url_test = new_url.rstrip('/')
+            connection_failed = False
+            error_msg = ""
+            try:
+                r = requests.get(f"{url_test}/api/v1/spool?allow_archived=false", timeout=5)
+                if r.status_code != 200:
+                    connection_failed = True
+                    error_msg = f"status code {r.status_code}"
             except Exception as e:
-                orca.host.ui.message(f"Failed to save settings: {e}", title="Spoolman Bridge", icon="error")
-        return orca.ExecutionResult.success("Settings closed")
+                connection_failed = True
+                error_msg = str(e)
+
+            if connection_failed:
+                orca.host.ui.message(
+                    tr("url_saved_connection_failed", url=new_url, error=error_msg),
+                    title=tr("connection_warning_title"),
+                    icon="warning"
+                )
+            else:
+                # Connection succeeded! Check if anything needs syncing
+                created_fields = ensure_spoolman_fields(dry_run=True)
+                sync_count, modified_fils = sync_spoolman_filaments(dry_run=True)
+                created_procs, modified_procs = sync_spoolman_processes(dry_run=True)
+                
+                modified = modified_fils or modified_procs or (created_fields > 0)
+                
+                if modified:
+                    choice = orca.host.ui.message(
+                        tr("connection_sync_prompt"),
+                        title=tr("plugin_title"),
+                        buttons="yes_no",
+                        icon="question"
+                    )
+                    if choice == "yes":
+                        count = auto_inject_presets()
+                        real_created_fields = ensure_spoolman_fields(dry_run=False)
+                        real_sync_count, _ = sync_spoolman_filaments(dry_run=False)
+                        real_created_procs, _ = sync_spoolman_processes(dry_run=False)
+                        
+                        orca.host.ui.message(tr("sync_restart_success"), title=tr("plugin_title"), icon="info")
+                else:
+                    orca.host.ui.message(tr("connection_up_to_date"), title=tr("plugin_title"), icon="info")
+        except Exception as e:
+            orca.host.ui.message(tr("save_settings_failed", error=e), title=tr("plugin_title"), icon="error")
 
 @orca.plugin
 class SpoolmanPlugin(orca.base):
