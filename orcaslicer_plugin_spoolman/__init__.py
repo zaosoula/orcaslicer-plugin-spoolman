@@ -835,117 +835,127 @@ class SpoolmanGCode(orca.slicing.SlicingPipelineCapabilityBase):
             return orca.ExecutionResult.skipped("G-code file not ready")
 
         # Parse G-code for filament consumption & metadata
-        used_g = 0.0
-        gcode_vendor = ""
-        gcode_material = ""
-        gcode_color = ""
-        gcode_preset_name = ""
+        def _split(v, sep):
+            return [x.strip().strip('"').strip() for x in v.split(sep)]
 
+        used = []
+        presets, types, vendors, colours = [], [], [], []
         try:
             file_size = os.path.getsize(ctx.gcode_path)
-            seek_pos = max(0, file_size - 200000)
-            with open(ctx.gcode_path, "r", encoding="utf-8") as f:
+            seek_pos = max(0, file_size - 400000)
+            with open(ctx.gcode_path, "r", encoding="utf-8", errors="ignore") as f:
                 f.seek(seek_pos)
                 for line in f:
-                    stripped = line.strip()
-                    if stripped.startswith(";"):
-                        if "filament used [g] =" in stripped:
-                            val = stripped.split("=")[1].strip()
-                            if "," in val:
-                                used_g = float(val.split(",")[0].strip())
-                            else:
-                                used_g = float(val)
-                        elif "filament_vendor =" in stripped:
-                            gcode_vendor = stripped.split("=")[1].strip().strip('"')
-                        elif "filament_type =" in stripped:
-                            gcode_material = stripped.split("=")[1].strip().strip('"')
-                        elif "filament_colour =" in stripped:
-                            gcode_color = stripped.split("=")[1].strip().strip('"')
-                        elif "filament_settings_id =" in stripped:
-                            gcode_preset_name = stripped.split("=")[1].strip().strip('"')
-
-            write_log(f"[PARSED] used_g={used_g}g, vendor={gcode_vendor}, material={gcode_material}, color={gcode_color}, preset={gcode_preset_name}")
+                    s = line.strip()
+                    if not s.startswith(";") or "=" not in s:
+                        continue
+                    key, _, val = s.lstrip(";").partition("=")
+                    key, val = key.strip(), val.strip()
+                    if key == "filament used [g]":
+                        vals = []
+                        for x in val.split(","):
+                            try:
+                                vals.append(float(x.strip()))
+                            except ValueError:
+                                vals.append(0.0)
+                        used = vals
+                    elif key == "filament_settings_id":
+                        presets = _split(val, ";")
+                    elif key == "filament_type":
+                        types = _split(val, ";")
+                    elif key == "filament_vendor":
+                        vendors = _split(val, ";")
+                    elif key == "filament_colour":
+                        colours = _split(val, ";")
+            write_log(f"[PARSED] used={used}, presets={presets}, types={types}, vendors={vendors}, colours={colours}")
         except Exception as e:
             msg = f"Failed to parse G-code: {e}"
             write_log(f"[ERROR] {msg}")
             return orca.ExecutionResult.failure(orca.PluginResult.FatalError, msg)
 
-        if used_g <= 0.0:
+        def _at(lst, i):
+            if not lst:
+                return ""
+            return lst[i] if i < len(lst) else lst[0]
+
+        slots = [(i, g) for i, g in enumerate(used) if g > 0.0]
+        if not slots:
             msg = "No filament usage detected in G-code."
             write_log(f"[SKIPPED] {msg}")
             return orca.ExecutionResult.skipped(msg)
 
         # Query Spoolman active spools
-        spools = []
         try:
             r = requests.get(f"{url}/api/v1/spool?allow_archived=false", timeout=5)
-            if r.status_code == 200:
-                spools = r.json()
-            else:
+            if r.status_code != 200:
                 msg = f"Failed to query Spoolman, status {r.status_code}"
                 write_log(f"[ERROR] {msg}")
                 return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, msg)
+            spools = r.json()
         except Exception as e:
             msg = f"Error connecting to Spoolman: {e}"
             write_log(f"[ERROR] {msg}")
             return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, msg)
 
-        # Match best spool
-        best_spool = None
-        score = 0
-        
-        # Check if the preset name explicitly contains (#X)
-        match = re.search(r"\(#(\d+)\)", gcode_preset_name)
-        if match:
-            matched_id = int(match.group(1))
-            write_log(f"[PRESET ID] Found explicit spool ID {matched_id} in preset name: {gcode_preset_name}")
-            for s in spools:
-                if s.get("id") == matched_id:
-                    best_spool = s
-                    score = 100
-                    break
+        by_id = {s.get("id"): s for s in spools}
+        deductions = {}   # spool_id -> [spool, grams, [slot numbers]]
+        unmatched = []
+        for i, g in slots:
+            preset = _at(presets, i)
+            spool, score = None, 0
+            m = re.search(r"\(#(\d+)\)", preset)
+            if m and int(m.group(1)) in by_id:
+                spool, score = by_id[int(m.group(1))], 100
+            else:
+                spool, score = find_best_spool(spools, _at(vendors, i), _at(types, i), _at(colours, i), preset)
+            if not spool or score <= 10:
+                unmatched.append(f"slot {i + 1} ({preset or 'unknown'}, {g:.2f}g)")
+                write_log(f"[NO MATCH] slot {i + 1}: preset={preset} used={g}")
+                continue
+            entry = deductions.setdefault(spool.get("id"), [spool, 0.0, []])
+            entry[1] += g
+            entry[2].append(i + 1)
+            write_log(f"[MATCHED] slot {i + 1} -> spool #{spool.get('id')} score={score} used={g}")
 
-        if not best_spool:
-            best_spool, score = find_best_spool(spools, gcode_vendor, gcode_material, gcode_color, gcode_preset_name)
-            
-        if not best_spool or score <= 10:
-            msg = f"No matching spool found in Spoolman (Vendor={gcode_vendor}, Material={gcode_material}, Color={gcode_color})."
+        if not deductions:
+            msg = "No matching spools found in Spoolman for: " + ", ".join(unmatched)
             write_log(f"[SKIPPED] {msg}")
             return orca.ExecutionResult.skipped(msg)
 
-        spool_id = best_spool.get("id")
-        spool_name = (best_spool.get("filament") or {}).get("name", "Unnamed")
-        spool_vendor = ((best_spool.get("filament") or {}).get("vendor") or {}).get("name", "Generic")
-        spool_desc = f"{spool_vendor} {spool_name}"
+        def _desc(spool):
+            fil = spool.get("filament") or {}
+            return f"{(fil.get('vendor') or {}).get('name', 'Generic')} {fil.get('name', 'Unnamed')}"
 
-        write_log(f"[MATCHED] Best matching spool: #{spool_id} ({spool_desc}) with score {score}")
-
-        # Ask user for confirmation
-        question = f"Do you want to remove {used_g}g from spool #{spool_id} ({spool_desc})?"
+        lines = [f"- {round(g, 2)}g from spool #{sid} ({_desc(sp)}) [slot {', '.join(map(str, sl))}]"
+                 for sid, (sp, g, sl) in deductions.items()]
+        question = "Remove filament usage from Spoolman?\n\n" + "\n".join(lines)
+        if unmatched:
+            question += "\n\nNo spool matched (skipped): " + ", ".join(unmatched)
         choice = orca.host.ui.message(question, title="Spoolman Bridge", buttons="yes_no", icon="question")
-        
         if choice != "yes":
             msg = "User skipped filament deduction."
             write_log(f"[SKIPPED] {msg}")
             return orca.ExecutionResult.skipped(msg)
 
-        # Deduct weight
-        try:
-            payload = {"use_weight": used_g}
-            write_log(f"[API PUT] Sending payload {payload} to {url}/api/v1/spool/{spool_id}/use")
-            r = requests.put(f"{url}/api/v1/spool/{spool_id}/use", json=payload, timeout=10)
-            if r.status_code == 200:
-                msg = f"Deducted {used_g}g from spool #{spool_id} ({spool_desc})"
-                write_log(f"[SUCCESS] {msg}")
-                return orca.ExecutionResult.success(msg)
-            else:
-                msg = f"Spoolman returned status {r.status_code}: {r.text}"
-                write_log(f"[API ERROR] {msg}")
-                return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, msg)
-        except Exception as e:
-            msg = f"Failed to contact Spoolman: {e}"
-            write_log(f"[API EXCEPTION] {msg}")
+        done, failed = [], []
+        for sid, (sp, g, sl) in deductions.items():
+            payload = {"use_weight": round(g, 2)}
+            try:
+                write_log(f"[API PUT] {payload} -> {url}/api/v1/spool/{sid}/use")
+                r = requests.put(f"{url}/api/v1/spool/{sid}/use", json=payload, timeout=10)
+                if r.status_code == 200:
+                    done.append(f"{round(g, 2)}g from #{sid}")
+                else:
+                    failed.append(f"#{sid}: HTTP {r.status_code} {r.text[:200]}")
+            except Exception as e:
+                failed.append(f"#{sid}: {e}")
+        if failed:
+            msg = "Deducted " + (", ".join(done) or "nothing") + ". Failed: " + "; ".join(failed)
+            write_log(f"[API ERROR] {msg}")
             return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, msg)
+        msg = "Deducted " + ", ".join(done)
+        write_log(f"[SUCCESS] {msg}")
+        return orca.ExecutionResult.success(msg)
 
 class SpoolmanCleanupScript(orca.script.ScriptPluginCapabilityBase):
     def get_name(self):
